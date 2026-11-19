@@ -1,13 +1,12 @@
 """
-Multi-Cadre Seniority List Management System
-Run:  streamlit run app.py
+Multi-Cadre Seniority List Management System (Cloud Version)
 """
 import streamlit as st
-import sqlite3
 import pandas as pd
 import os
 from datetime import date
 import io
+from supabase import create_client, Client
 
 # --- PASSWORD GATE ---
 if "authenticated" not in st.session_state:
@@ -25,8 +24,101 @@ if not st.session_state.authenticated:
     st.stop()
 # ---------------------
 
-DB_FILE = "seniority.db"
+# --- SUPABASE CONNECTION ---
+url: str = st.secrets["SUPABASE_URL"]
+key: str = st.secrets["SUPABASE_KEY"]
+supabase: Client = create_client(url, key)
 
+# ---------- DB helpers ----------
+def load_all():
+    response = supabase.table("employees").select("*").execute()
+    return pd.DataFrame(response.data) if response.data else pd.DataFrame()
+
+def cnic_exists(cnic):
+    if not cnic or not str(cnic).strip(): return False
+    response = supabase.table("employees").select("id").eq("cnic", str(cnic).strip()).execute()
+    return len(response.data) > 0
+
+def compute_seniority(df):
+    if df.empty: return df
+    for col in ["regular_apptt", "taking_over", "dob"]:
+        df[col + "_sort"] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+    df = df.sort_values(by=["regular_apptt_sort", "taking_over_sort", "dob_sort"], na_position="last").reset_index(drop=True)
+    df.insert(0, "rank", df.index + 1)
+    return df
+
+def add_employee(rec):
+    data = {
+        "name": rec[0], "father_name": rec[1], "school": rec[2], "district": rec[3], "bps": rec[4],
+        "acad": rec[5], "div": rec[6], "prof": rec[7], "subject": rec[8], "dob": rec[9],
+        "first_apptt": rec[10], "taking_over": rec[11], "regular_apptt": rec[12], "desig": rec[13],
+        "pno": rec[14], "cnic": rec[15], "cell": rec[16], "remarks": rec[17], "cadre": rec[18]
+    }
+    try:
+        supabase.table("employees").insert(data).execute()
+        return True, "Employee added."
+    except Exception as e:
+        return False, f"Error: {e}"
+
+def update_employee(emp_id, rec):
+    data = {
+        "name": rec[0], "father_name": rec[1], "school": rec[2], "district": rec[3], "bps": rec[4],
+        "acad": rec[5], "div": rec[6], "prof": rec[7], "subject": rec[8], "dob": rec[9],
+        "first_apptt": rec[10], "taking_over": rec[11], "regular_apptt": rec[12], "desig": rec[13],
+        "pno": rec[14], "cnic": rec[15], "cell": rec[16], "remarks": rec[17], "cadre": rec[18]
+    }
+    try:
+        supabase.table("employees").update(data).eq("id", emp_id).execute()
+        return True, "Employee updated."
+    except Exception as e:
+        return False, f"Error: {e}"
+
+def delete_employee(emp_id):
+    supabase.table("employees").delete().eq("id", emp_id).execute()
+
+def find_duplicates(df):
+    results = {}
+    if df.empty: return results
+    d = df[df["cnic"].str.strip() != ""].copy()
+    dup = d[d.duplicated(subset=["cnic"], keep=False)].sort_values("cnic")
+    if len(dup): results["Same CNIC"] = dup[["name", "father_name", "school", "cnic", "dob", "regular_apptt"]]
+    return results
+
+# ---------- UI ----------
+st.set_page_config(page_title="Multi-Cadre Seniority System", page_icon="📋", layout="wide")
+st.title("📋 Seniority List Management System")
+
+CADRES = {
+    "CT (BPS-15)": "CT",
+    "PST (BPS-15)": "PST",
+    "Drawing Master (BPS-15)": "DM",
+    "TT (BPS-15)": "TT",
+    "AT (BPS-15)": "AT",
+    "CT (IT) (BPS-12)": "CT-IT"
+}
+
+st.sidebar.header("Select Cadre")
+selected_cadre_label = st.sidebar.radio("Choose a list to view/edit:", list(CADRES.keys()))
+selected_cadre_code = CADRES[selected_cadre_label]
+st.sidebar.markdown("---")
+st.sidebar.caption(f"Viewing data for: **{selected_cadre_label}**")
+
+full_df = load_all()
+if not full_df.empty and "cadre" in full_df.columns:
+    df = full_df[full_df["cadre"] == selected_cadre_code].copy()
+else:
+    df = pd.DataFrame()
+
+MIN_DATE = date(1947, 1, 1)
+
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📊 View List",
+    "➕ Add Employee",
+    "📥 Bulk Import",
+    "✏️ Edit Employee",
+    "🗑️ Delete Employee",
+    "🔍 Duplicate Check",
+])
 CADRES = {
     "CT (BPS-15)": "CT",
     "PST (BPS-15)": "PST",
