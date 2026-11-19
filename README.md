@@ -1,1 +1,4 @@
-# seniority-system
+streamlit
+pandas
+supabase
+openpyxl
