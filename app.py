@@ -211,7 +211,6 @@ st.title("📋 Seniority List Management System")
 
 
 st.sidebar.header("Select Cadre")
-selected_cadre_label = st.sidebar.radio("Choose a list to view/edit:", list(CADRES.keys()), key="sidebar_cadre_selector_main_123")
 selected_cadre_code = CADRES[selected_cadre_label]
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Viewing data for: **{selected_cadre_label}**")
