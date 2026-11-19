@@ -1,4 +1,1 @@
-streamlit
-pandas
-supabase
-openpyxl
+seniority-system
