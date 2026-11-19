@@ -209,9 +209,6 @@ def find_duplicates(df):
 st.set_page_config(page_title="Multi-Cadre Seniority System", page_icon="📋", layout="wide")
 st.title("📋 Seniority List Management System")
 
-if not os.path.exists(DB_FILE):
-    st.error("❌ Database not found.")
-    st.stop()
 
 st.sidebar.header("Select Cadre")
 selected_cadre_label = st.sidebar.radio("Choose a list to view/edit:", list(CADRES.keys()))
