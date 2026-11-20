@@ -49,7 +49,7 @@ def cnic_exists(cnic):
 def compute_seniority(df):
     if df.empty: return df
     for col in ["regular_apptt", "taking_over", "dob"]:
-        df[col + "_sort"] = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+        df[col + "_sort"] = pd.to_datetime(df[col], errors="coerce").dt.date
     df = df.sort_values(by=["regular_apptt_sort", "taking_over_sort", "dob_sort"], na_position="last").reset_index(drop=True)
     df.insert(0, "rank", df.index + 1)
     return df
