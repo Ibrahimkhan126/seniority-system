@@ -9,13 +9,11 @@ from supabase import create_client, Client
 # HELPER: CNIC CLEANER
 # ==========================================
 def clean_cnic(cnic):
-    """Strips all non-digits and formats as XXXXX-XXXXXXX-X"""
     if not cnic: return ""
-    # Remove everything except numbers
     digits = re.sub(r'\D', '', str(cnic))
     if len(digits) == 13:
         return f"{digits[:5]}-{digits[5:12]}-{digits[12:]}"
-    return str(cnic).strip() # Return as-is if not exactly 13 digits
+    return str(cnic).strip()
 
 # ==========================================
 # 1. SECURE LOGIN GATE
@@ -67,13 +65,11 @@ def load_pending():
 def cnic_exists(cnic):
     cleaned = clean_cnic(cnic)
     if not cleaned: return False
-    # We have to fetch all and check locally because Supabase doesn't easily do "strip dashes and compare"
     res1 = supabase.table("employees").select("cnic").execute()
     res2 = supabase.table("pending_employees").select("cnic").execute()
     
     all_cnics = [clean_cnic(x["cnic"]) for x in res1.data if x.get("cnic")]
     all_cnics += [clean_cnic(x["cnic"]) for x in res2.data if x.get("cnic")]
-    
     return cleaned in all_cnics
 
 def compute_seniority(df):
@@ -120,7 +116,6 @@ def delete_pending(pending_id):
 def find_duplicates(df):
     results = {}
     if df.empty: return results
-    # Clean CNIC just for checking
     df["cnic_clean"] = df["cnic"].apply(clean_cnic)
     d = df[df["cnic_clean"].str.strip() != ""].copy()
     dup = d[d.duplicated(subset=["cnic_clean"], keep=False)].sort_values("cnic_clean")
@@ -194,8 +189,34 @@ if tab1 is not None:
                 )
                 view = view[m]
 
+            # Format dates to look nice (e.g., 14 Mar 2018) instead of raw YYYY-MM-DD
+            for date_col in ["dob", "first_apptt", "taking_over", "regular_apptt"]:
+                view[date_col] = pd.to_datetime(view[date_col], errors="coerce").dt.strftime('%d %b %Y').fillna("")
+
             display_cols = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
-            st.dataframe(view[display_cols], use_container_width=True, height=500)
+            
+            # Using Streamlit's column_config to make the table beautiful
+            st.dataframe(
+                view[display_cols], 
+                use_container_width=True, 
+                height=600,
+                hide_index=True,
+                column_config={
+                    "rank": st.column_config.NumberColumn("Rank", width="small"),
+                    "name": st.column_config.TextColumn("Name", width="medium"),
+                    "father_name": st.column_config.TextColumn("Father's Name", width="medium"),
+                    "school": st.column_config.TextColumn("School", width="large"),
+                    "dob": st.column_config.TextColumn("DOB", width="small"),
+                    "first_apptt": st.column_config.TextColumn("1st Apptt", width="small"),
+                    "taking_over": st.column_config.TextColumn("Taking Over", width="small"),
+                    "regular_apptt": st.column_config.TextColumn("Regular Apptt", width="small"),
+                    "desig": st.column_config.TextColumn("Desig", width="small"),
+                    "pno": st.column_config.TextColumn("P/No", width="small"),
+                    "cnic": st.column_config.TextColumn("CNIC", width="medium"),
+                    "cell": st.column_config.TextColumn("Cell", width="medium"),
+                    "remarks": st.column_config.TextColumn("Remarks", width="medium"),
+                }
+            )
 
             col_exp1, col_exp2 = st.columns(2)
             csv = view[display_cols].to_csv(index=False).encode("utf-8")
