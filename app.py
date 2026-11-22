@@ -2,7 +2,20 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import io
+import re
 from supabase import create_client, Client
+
+# ==========================================
+# HELPER: CNIC CLEANER
+# ==========================================
+def clean_cnic(cnic):
+    """Strips all non-digits and formats as XXXXX-XXXXXXX-X"""
+    if not cnic: return ""
+    # Remove everything except numbers
+    digits = re.sub(r'\D', '', str(cnic))
+    if len(digits) == 13:
+        return f"{digits[:5]}-{digits[5:12]}-{digits[12:]}"
+    return str(cnic).strip() # Return as-is if not exactly 13 digits
 
 # ==========================================
 # 1. SECURE LOGIN GATE
@@ -52,11 +65,16 @@ def load_pending():
     return pd.DataFrame(response.data)
 
 def cnic_exists(cnic):
-    if not cnic or not str(cnic).strip(): return False
-    # Check both main table and pending table
-    res1 = supabase.table("employees").select("id").eq("cnic", str(cnic).strip()).execute()
-    res2 = supabase.table("pending_employees").select("id").eq("cnic", str(cnic).strip()).execute()
-    return len(res1.data) > 0 or len(res2.data) > 0
+    cleaned = clean_cnic(cnic)
+    if not cleaned: return False
+    # We have to fetch all and check locally because Supabase doesn't easily do "strip dashes and compare"
+    res1 = supabase.table("employees").select("cnic").execute()
+    res2 = supabase.table("pending_employees").select("cnic").execute()
+    
+    all_cnics = [clean_cnic(x["cnic"]) for x in res1.data if x.get("cnic")]
+    all_cnics += [clean_cnic(x["cnic"]) for x in res2.data if x.get("cnic")]
+    
+    return cleaned in all_cnics
 
 def compute_seniority(df):
     if df.empty: return df
@@ -72,7 +90,7 @@ def submit_employee(rec, is_pending=True):
         "name": rec[0], "father_name": rec[1], "school": rec[2], "district": rec[3], "bps": rec[4],
         "acad": rec[5], "div": rec[6], "prof": rec[7], "subject": rec[8], "dob": rec[9],
         "first_apptt": rec[10], "taking_over": rec[11], "regular_apptt": rec[12], "desig": rec[13],
-        "pno": rec[14], "cnic": rec[15], "cell": rec[16], "remarks": rec[17], "cadre": rec[18]
+        "pno": rec[14], "cnic": clean_cnic(rec[15]), "cell": rec[16], "remarks": rec[17], "cadre": rec[18]
     }
     try:
         supabase.table(table).insert(data).execute()
@@ -85,7 +103,7 @@ def update_employee(emp_id, rec):
         "name": rec[0], "father_name": rec[1], "school": rec[2], "district": rec[3], "bps": rec[4],
         "acad": rec[5], "div": rec[6], "prof": rec[7], "subject": rec[8], "dob": rec[9],
         "first_apptt": rec[10], "taking_over": rec[11], "regular_apptt": rec[12], "desig": rec[13],
-        "pno": rec[14], "cnic": rec[15], "cell": rec[16], "remarks": rec[17], "cadre": rec[18]
+        "pno": rec[14], "cnic": clean_cnic(rec[15]), "cell": rec[16], "remarks": rec[17], "cadre": rec[18]
     }
     try:
         supabase.table("employees").update(data).eq("id", emp_id).execute()
@@ -102,8 +120,10 @@ def delete_pending(pending_id):
 def find_duplicates(df):
     results = {}
     if df.empty: return results
-    d = df[df["cnic"].str.strip() != ""].copy()
-    dup = d[d.duplicated(subset=["cnic"], keep=False)].sort_values("cnic")
+    # Clean CNIC just for checking
+    df["cnic_clean"] = df["cnic"].apply(clean_cnic)
+    d = df[df["cnic_clean"].str.strip() != ""].copy()
+    dup = d[d.duplicated(subset=["cnic_clean"], keep=False)].sort_values("cnic_clean")
     if len(dup): results["Same CNIC"] = dup[["name", "father_name", "school", "cnic", "dob", "regular_apptt"]]
     return results
 
@@ -130,7 +150,7 @@ if st.session_state.role == "admin":
         st.rerun()
 else:
     selected_cadre_label = st.sidebar.selectbox("Select your Cadre:", list(CADRES.keys()), key="public_cadre_selector")
-    st.sidebar.info("You are logged in as an Employee. Your data will be reviewed by Admin before being added.")
+    st.sidebar.info("You are logged in as an Employee. Your data will be reviewed by Admin.")
 
 selected_cadre_code = CADRES[selected_cadre_label]
 
@@ -142,7 +162,6 @@ else:
 
 MIN_DATE = date(1947, 1, 1)
 
-# --- DEFINE TABS BASED ON ROLE ---
 if st.session_state.role == "admin":
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📊 View List", "➕ Add Employee", "📥 Bulk Import", 
@@ -224,7 +243,7 @@ with tab2:
 
         submitted = st.form_submit_button("✅ Submit", disabled=form_disabled)
         if submitted:
-            cnic_clean = live_cnic.strip()
+            cnic_clean = clean_cnic(live_cnic)
             if not name.strip(): st.error("Name is required.")
             elif not cnic_clean: st.error("CNIC is required.")
             elif cnic_exists(cnic_clean): st.error("⚠️ This CNIC already exists.")
@@ -236,7 +255,6 @@ with tab2:
                     taking.isoformat() if taking else "", regular.isoformat() if regular else "",
                     desig, pno.strip(), cnic_clean, cell.strip(), remarks.strip(), selected_cadre_code
                 )
-                # If Admin, add directly. If Public, send to pending.
                 is_pending = (st.session_state.role == "public")
                 ok, msg = submit_employee(rec, is_pending=is_pending)
                 
@@ -269,7 +287,7 @@ if tab3 is not None:
                     if st.button("✅ Process Import"):
                         added, skipped_dup, skipped_err = 0, 0, 0
                         for _, row in import_df.iterrows():
-                            cnic = row.get("cnic", "").strip()
+                            cnic = clean_cnic(row.get("cnic", ""))
                             if not cnic or cnic_exists(cnic):
                                 skipped_dup += 1
                                 continue
@@ -326,7 +344,7 @@ if tab4 is not None:
                 e_remarks = st.text_area("Remarks", value=row["remarks"])
                 save = st.form_submit_button("💾 Save Changes")
                 if save:
-                    if e_cnic.strip() != row["cnic"].strip() and cnic_exists(e_cnic.strip()):
+                    if clean_cnic(e_cnic) != clean_cnic(row["cnic"]) and cnic_exists(clean_cnic(e_cnic)):
                         st.error("⚠️ This CNIC is already used by another employee.")
                     else:
                         rec = (e_name.strip(), e_father.strip(), e_school.strip(), e_district.strip(), int(e_bps), e_acad.strip(), row["div"], row["prof"], e_subject.strip(), e_dob, e_first, e_taking, e_regular, e_desig, e_pno.strip(), e_cnic.strip(), e_cell.strip(), e_remarks.strip(), row["cadre"])
@@ -371,7 +389,6 @@ if tab7 is not None:
         
         pending_df = load_pending()
         if not pending_df.empty:
-            # Filter pending by cadre
             pending_df = pending_df[pending_df["cadre"] == selected_cadre_code]
             
         if pending_df.empty:
@@ -387,17 +404,14 @@ if tab7 is not None:
                     
                     col1, col2 = st.columns(2)
                     if col1.button(f"✅ Approve", key=f"approve_{row['id']}"):
-                        # Prepare record for main table
                         rec = (
                             row['name'], row['father_name'], row['school'], row['district'],
                             row['bps'], row['acad'], row['div'], row['prof'], row['subject'],
                             row['dob'], row['first_apptt'], row['taking_over'], row['regular_apptt'],
                             row['desig'], row['pno'], row['cnic'], row['cell'], row['remarks'], row['cadre']
                         )
-                        # Add to main table
                         ok, msg = submit_employee(rec, is_pending=False)
                         if ok:
-                            # Delete from pending table
                             delete_pending(row['id'])
                             st.success(f"Approved {row['name']}!")
                             st.rerun()
