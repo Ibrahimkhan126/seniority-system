@@ -146,7 +146,8 @@ if st.session_state.role == "admin":
         st.rerun()
 else:
     selected_cadre_label = st.sidebar.selectbox("Select your Cadre:", list(CADRES.keys()), key="public_cadre_selector")
-    menu = st.sidebar.radio("Menu:", ["➕ Submit Details", "🔍 Check Status"])
+    # ADDED "View List" TO PUBLIC MENU
+    menu = st.sidebar.radio("Menu:", ["📊 View List", "➕ Submit Details", "🔍 Check Status"])
     st.sidebar.info("You are logged in as an Employee.")
 
 selected_cadre_code = CADRES[selected_cadre_label]
@@ -163,40 +164,42 @@ MIN_DATE = date(1947, 1, 1)
 # 5. MENU LOGIC
 # ==========================================
 
-# --- ADMIN MENUS ---
-if st.session_state.role == "admin":
-    if menu == "📊 View List":
-        st.subheader(f"Admin: {selected_cadre_label} List")
-        if df.empty:
-            st.info("No employees found.")
-        else:
-            ranked = compute_seniority(df)
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total Employees", len(ranked))
-            c2.metric("Most Senior", ranked.iloc[0]["name"] if len(ranked) else "—")
-            c3.metric("Most Junior", ranked.iloc[-1]["name"] if len(ranked) else "—")
+# --- SHARED VIEW LIST (Admin & Public) ---
+if menu == "📊 View List":
+    st.subheader(f"{selected_cadre_label} Seniority List")
+    if df.empty:
+        st.info("No employees found.")
+    else:
+        ranked = compute_seniority(df)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Employees", len(ranked))
+        c2.metric("Most Senior", ranked.iloc[0]["name"] if len(ranked) else "—")
+        c3.metric("Most Junior", ranked.iloc[-1]["name"] if len(ranked) else "—")
 
-            search = st.text_input("Search list:", "")
-            view = ranked.copy()
-            if search:
-                m = view.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
-                view = view[m]
+        search = st.text_input("Search list:", "")
+        view = ranked.copy()
+        if search:
+            m = view.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
+            view = view[m]
 
-            for date_col in ["dob", "first_apptt", "taking_over", "regular_apptt"]:
-                view[date_col] = pd.to_datetime(view[date_col], errors="coerce").dt.strftime('%d %b %Y').fillna("")
+        for date_col in ["dob", "first_apptt", "taking_over", "regular_apptt"]:
+            view[date_col] = pd.to_datetime(view[date_col], errors="coerce").dt.strftime('%d %b %Y').fillna("")
 
-            display_cols = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
-            st.dataframe(view[display_cols], use_container_width=True, height=600, hide_index=True)
-            
-            col1, col2 = st.columns(2)
-            csv = view[display_cols].to_csv(index=False).encode("utf-8")
-            col1.download_button("⬇️ Download CSV", csv, f"{selected_cadre_code}_list.csv", "text/csv")
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                view[display_cols].to_excel(writer, index=False)
-            col2.download_button("⬇️ Download Excel", buffer.getvalue(), f"{selected_cadre_code}_list.xlsx")
+        display_cols = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
+        st.dataframe(view[display_cols], use_container_width=True, height=600, hide_index=True)
+        
+        col1, col2 = st.columns(2)
+        csv = view[display_cols].to_csv(index=False).encode("utf-8")
+        col1.download_button("⬇️ Download CSV", csv, f"{selected_cadre_code}_list.csv", "text/csv")
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            view[display_cols].to_excel(writer, index=False)
+        col2.download_button("⬇️ Download Excel", buffer.getvalue(), f"{selected_cadre_code}_list.xlsx")
 
-    elif menu == "➕ Add Employee":
+# --- ADMIN-ONLY MENUS ---
+elif st.session_state.role == "admin":
+    
+    if menu == "➕ Add Employee":
         st.subheader(f"Admin: Add New Employee to {selected_cadre_label}")
         live_cnic = st.text_input("CNIC *", key="admin_cnic")
         cnic_in_use = cnic_exists(live_cnic)
@@ -358,6 +361,7 @@ if st.session_state.role == "admin":
 
 # --- PUBLIC (EMPLOYEE) MENUS ---
 elif st.session_state.role == "public":
+    
     if menu == "➕ Submit Details":
         st.subheader(f"Submit Your Details for {selected_cadre_label}")
         st.info("Your data will be reviewed by Admin before being added to the Seniority List.")
@@ -398,14 +402,12 @@ elif st.session_state.role == "public":
             if not cleaned_search:
                 st.error("Enter a valid CNIC.")
             else:
-                # 1. Check if they are in the MAIN employee list
                 employee_record = pd.DataFrame()
                 if not df.empty:
                     df_copy = df.copy()
                     df_copy["cnic_clean"] = df_copy["cnic"].apply(clean_cnic)
                     employee_record = df_copy[df_copy["cnic_clean"] == cleaned_search]
                 
-                # 2. Check if they are in the PENDING list
                 pending_record = pd.DataFrame()
                 pending_df_all = load_pending()
                 if not pending_df_all.empty:
@@ -413,7 +415,6 @@ elif st.session_state.role == "public":
                     pending_copy["cnic_clean"] = pending_copy["cnic"].apply(clean_cnic)
                     pending_record = pending_copy[pending_copy["cnic_clean"] == cleaned_search]
 
-                # --- Display the results ---
                 if not employee_record.empty:
                     ranked_df = compute_seniority(df)
                     ranked_copy = ranked_df.copy()
@@ -422,7 +423,6 @@ elif st.session_state.role == "public":
                     
                     st.success("✅ Your record is officially added to the Seniority List.")
                     
-                    # --- SNAPSHOT CARD ---
                     st.markdown("### 🪪 Official Seniority Snapshot")
                     st.info(f"**{final_record['name']}** s/o {final_record['father_name']}\n\n"
                             f"**School:** {final_record['school']}\n\n"
