@@ -128,7 +128,7 @@ def find_duplicates(df):
 st.set_page_config(page_title="Seniority System", page_icon="📋", layout="wide")
 st.title("📋 Seniority List Management System")
 
-# HIDE TOP NAVIGATION FOR PUBLIC USERS
+# HIDE TOP NAVIGATION AND MAKE MOBILE FRIENDLY FOR PUBLIC USERS
 if st.session_state.role == "public":
     st.markdown("""
         <style>
@@ -140,6 +140,12 @@ if st.session_state.role == "public":
         [data-testid="stStatusWidget"] {visibility: hidden;}
         [data-testid="stToolbar"] {visibility: hidden;}
         .stDeployButton {display: none;}
+        /* Collapse the sidebar by default on mobile */
+        @media (max-width: 768px) {
+            section[data-testid="stSidebar"] {
+                display: none;
+            }
+        }
         </style>
         """, unsafe_allow_html=True)
 
@@ -181,6 +187,17 @@ MIN_DATE = date(1947, 1, 1)
 # --- SHARED VIEW LIST (Admin & Public) ---
 if menu == "📊 View List":
     st.subheader(f"{selected_cadre_label} Seniority List")
+    
+    # --- INSTRUCTIONS BOX FOR EMPLOYEES (Visible on View List) ---
+    if st.session_state.role == "public":
+        st.info("""
+        **📌 How to use this system:**
+        1. **Look at the Left Sidebar** (on mobile, tap the '>' arrow top-left) and make sure the correct Cadre is selected.
+        2. To **Add Your Details**, go to the **➕ Submit Details** menu in the sidebar.
+        3. Fill in your CNIC and details, then click **Submit to Admin**.
+        4. To **Check Your Rank**, go to the **🔍 Check Status** menu in the sidebar.
+        """)
+
     if df.empty:
         st.info("No employees found.")
     else:
