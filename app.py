@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import date
 import io
 import re
+import streamlit.components.v1 as components
 from supabase import create_client, Client
 
 # ==========================================
@@ -128,15 +129,42 @@ def find_duplicates(df):
 st.set_page_config(page_title="Seniority System", page_icon="📋", layout="wide")
 st.title("📋 Seniority List Management System")
 
-# HIDE THE TOP-RIGHT MENU (Print, Rerun, etc.) FOR PUBLIC USERS
+# HIDE TOP NAVIGATION FOR PUBLIC USERS
 if st.session_state.role == "public":
     st.markdown("""
         <style>
         #MainMenu {visibility: hidden;}
         header {visibility: hidden;}
         footer {visibility: hidden;}
+        /* Hides the Streamlit Cloud top right toolbar */
+        [data-testid="stAppDeployButton"] {display: none !important;}
+        .stAppDeployButton {display: none !important;}
         </style>
         """, unsafe_allow_html=True)
+    
+    # Inject JavaScript to remove the "Manage App" badge forcefully
+    components.html(
+        """
+        <script>
+        // Wait for DOM to load, then keep checking for the toolbar
+        const hideToolbar = () => {
+            const toolbar = window.parent.document.querySelector('[data-testid="stAppDeployButton"]');
+            if (toolbar) {
+                toolbar.style.display = 'none';
+                toolbar.style.visibility = 'hidden';
+            }
+            // Fallback for older versions or specific button classes
+            const buttons = window.parent.document.querySelectorAll('button[kind="header"]');
+            buttons.forEach(b => b.style.display = 'none');
+        };
+        
+        // Check immediately, and then keep checking in case it loads late
+        hideToolbar();
+        setInterval(hideToolbar, 500); 
+        </script>
+        """,
+        height=0, width=0
+    )
 
 CADRES = {
     "CT (BPS-15)": "CT",
@@ -194,7 +222,6 @@ if menu == "📊 View List":
         for date_col in ["dob", "first_apptt", "taking_over", "regular_apptt"]:
             view[date_col] = pd.to_datetime(view[date_col], errors="coerce").dt.strftime('%d %b %Y').fillna("")
 
-        # --- ADMIN VIEW ---
         if st.session_state.role == "admin":
             display_cols = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
             st.dataframe(view[display_cols], use_container_width=True, height=600, hide_index=True)
@@ -207,12 +234,9 @@ if menu == "📊 View List":
                 view[display_cols].to_excel(writer, index=False)
             col2.download_button("⬇️ Download Excel", buffer.getvalue(), f"{selected_cadre_code}_list.xlsx")
         
-        # --- EMPLOYEE VIEW (HIDDEN SENSITIVE COLUMNS) ---
         else:
-            # Only show non-sensitive columns to public
             display_cols_public = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "remarks"]
             
-            # CSS to make text unselectable
             st.markdown("""
                 <style>
                 .static-table {
@@ -237,10 +261,8 @@ if menu == "📊 View List":
                 </style>
             """, unsafe_allow_html=True)
             
-            # Build the HTML table
             html = '<table class="static-table"><thead><tr>'
             for col in display_cols_public:
-                # Clean up column names for headers
                 clean_header = col.replace("_", " ").title()
                 if col == "dob": clean_header = "DOB"
                 if col == "first_apptt": clean_header = "1st Apptt"
@@ -257,7 +279,6 @@ if menu == "📊 View List":
                 html += '</tr>'
             html += '</tbody></table>'
             
-            # Render it
             st.markdown(html, unsafe_allow_html=True)
 
 # --- ADMIN-ONLY MENUS ---
