@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import date
 import io
 import re
-import streamlit.components.v1 as components
 from supabase import create_client, Client
 
 # ==========================================
@@ -187,47 +186,13 @@ if menu == "📊 View List":
 
         display_cols = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
         
-        # --- COPY PROTECTION FOR EMPLOYEES ---
+        # --- APPLY EXPORT DISABLE FOR PUBLIC USERS ---
         if st.session_state.role == "public":
-            # Aggressive CSS
-            st.markdown("""
-                <style>
-                /* Block selection on the whole page */
-                * {
-                    -webkit-user-select: none !important;
-                    -moz-user-select: none !important;
-                    -ms-user-select: none !important;
-                    user-select: none !important;
-                }
-                /* But allow typing in inputs */
-                input, textarea {
-                    -webkit-user-select: text !important;
-                    -moz-user-select: text !important;
-                    -ms-user-select: text !important;
-                    user-select: text !important;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-            
-            # JavaScript injection to intercept copy/drag on the table specifically
-            components.html(
-                """
-                <script>
-                const preventCopy = (e) => {
-                    const target = e.target;
-                    if (target.closest('[data-testid="stDataFrame"]')) {
-                        e.preventDefault();
-                        return false;
-                    }
-                };
-                document.addEventListener('copy', preventCopy, true);
-                document.addEventListener('cut', preventCopy, true);
-                document.addEventListener('dragstart', preventCopy, true);
-                document.addEventListener('selectstart', preventCopy, true);
-                </script>
-                """,
-                height=0, width=0
-            )
+            # This native config disables both CSV download and clipboard copy
+            st.set_option("client.disableDataExport", True)
+        else:
+            # Ensure it's enabled for admin
+            st.set_option("client.disableDataExport", False)
 
         st.dataframe(view[display_cols], use_container_width=True, height=600, hide_index=True)
         
