@@ -146,9 +146,20 @@ if st.session_state.role == "admin":
         st.rerun()
 else:
     selected_cadre_label = st.sidebar.selectbox("Select your Cadre:", list(CADRES.keys()), key="public_cadre_selector")
-    # ADDED "View List" TO PUBLIC MENU
     menu = st.sidebar.radio("Menu:", ["📊 View List", "➕ Submit Details", "🔍 Check Status"])
     st.sidebar.info("You are logged in as an Employee.")
+    
+    # --- DISABLE COPY/PASTE FOR EMPLOYEES ---
+    st.markdown("""
+        <style>
+        /* Disable text selection on the entire app for public users */
+        body {
+            -webkit-user-select: none; /* Safari */
+            -ms-user-select: none; /* IE 10 and IE 11 */
+            user-select: none; /* Standard syntax */
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
 selected_cadre_code = CADRES[selected_cadre_label]
 
@@ -186,15 +197,32 @@ if menu == "📊 View List":
             view[date_col] = pd.to_datetime(view[date_col], errors="coerce").dt.strftime('%d %b %Y').fillna("")
 
         display_cols = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
+        
+        # --- BLOCK COPYING FOR EMPLOYEES ON THE TABLE ---
+        if st.session_state.role == "public":
+            st.markdown("""
+                <style>
+                /* Target Streamlit dataframes to prevent selection */
+                div[data-testid="stDataFrame"] {
+                    -webkit-user-select: none;
+                    -moz-user-select: none;
+                    -ms-user-select: none;
+                    user-select: none;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+        
         st.dataframe(view[display_cols], use_container_width=True, height=600, hide_index=True)
         
-        col1, col2 = st.columns(2)
-        csv = view[display_cols].to_csv(index=False).encode("utf-8")
-        col1.download_button("⬇️ Download CSV", csv, f"{selected_cadre_code}_list.csv", "text/csv")
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            view[display_cols].to_excel(writer, index=False)
-        col2.download_button("⬇️ Download Excel", buffer.getvalue(), f"{selected_cadre_code}_list.xlsx")
+        # --- ONLY SHOW DOWNLOAD BUTTONS TO ADMIN ---
+        if st.session_state.role == "admin":
+            col1, col2 = st.columns(2)
+            csv = view[display_cols].to_csv(index=False).encode("utf-8")
+            col1.download_button("⬇️ Download CSV", csv, f"{selected_cadre_code}_list.csv", "text/csv")
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                view[display_cols].to_excel(writer, index=False)
+            col2.download_button("⬇️ Download Excel", buffer.getvalue(), f"{selected_cadre_code}_list.xlsx")
 
 # --- ADMIN-ONLY MENUS ---
 elif st.session_state.role == "admin":
