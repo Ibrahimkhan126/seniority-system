@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import date
 import io
 import re
+import streamlit.components.v1 as components
 from supabase import create_client, Client
 
 # ==========================================
@@ -148,18 +149,6 @@ else:
     selected_cadre_label = st.sidebar.selectbox("Select your Cadre:", list(CADRES.keys()), key="public_cadre_selector")
     menu = st.sidebar.radio("Menu:", ["📊 View List", "➕ Submit Details", "🔍 Check Status"])
     st.sidebar.info("You are logged in as an Employee.")
-    
-    # --- DISABLE COPY/PASTE FOR EMPLOYEES ---
-    st.markdown("""
-        <style>
-        /* Disable text selection on the entire app for public users */
-        body {
-            -webkit-user-select: none; /* Safari */
-            -ms-user-select: none; /* IE 10 and IE 11 */
-            user-select: none; /* Standard syntax */
-        }
-        </style>
-        """, unsafe_allow_html=True)
 
 selected_cadre_code = CADRES[selected_cadre_label]
 
@@ -198,23 +187,50 @@ if menu == "📊 View List":
 
         display_cols = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
         
-        # --- BLOCK COPYING FOR EMPLOYEES ON THE TABLE ---
+        # --- COPY PROTECTION FOR EMPLOYEES ---
         if st.session_state.role == "public":
+            # Aggressive CSS
             st.markdown("""
                 <style>
-                /* Target Streamlit dataframes to prevent selection */
-                div[data-testid="stDataFrame"] {
-                    -webkit-user-select: none;
-                    -moz-user-select: none;
-                    -ms-user-select: none;
-                    user-select: none;
+                /* Block selection on the whole page */
+                * {
+                    -webkit-user-select: none !important;
+                    -moz-user-select: none !important;
+                    -ms-user-select: none !important;
+                    user-select: none !important;
+                }
+                /* But allow typing in inputs */
+                input, textarea {
+                    -webkit-user-select: text !important;
+                    -moz-user-select: text !important;
+                    -ms-user-select: text !important;
+                    user-select: text !important;
                 }
                 </style>
             """, unsafe_allow_html=True)
-        
+            
+            # JavaScript injection to intercept copy/drag on the table specifically
+            components.html(
+                """
+                <script>
+                const preventCopy = (e) => {
+                    const target = e.target;
+                    if (target.closest('[data-testid="stDataFrame"]')) {
+                        e.preventDefault();
+                        return false;
+                    }
+                };
+                document.addEventListener('copy', preventCopy, true);
+                document.addEventListener('cut', preventCopy, true);
+                document.addEventListener('dragstart', preventCopy, true);
+                document.addEventListener('selectstart', preventCopy, true);
+                </script>
+                """,
+                height=0, width=0
+            )
+
         st.dataframe(view[display_cols], use_container_width=True, height=600, hide_index=True)
         
-        # --- ONLY SHOW DOWNLOAD BUTTONS TO ADMIN ---
         if st.session_state.role == "admin":
             col1, col2 = st.columns(2)
             csv = view[display_cols].to_csv(index=False).encode("utf-8")
