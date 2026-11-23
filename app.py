@@ -3,7 +3,6 @@ import pandas as pd
 from datetime import date
 import io
 import re
-import streamlit.components.v1 as components
 from supabase import create_client, Client
 
 # ==========================================
@@ -136,39 +135,13 @@ if st.session_state.role == "public":
         #MainMenu {visibility: hidden;}
         header {visibility: hidden;}
         footer {visibility: hidden;}
-        /* Hides the Streamlit Cloud top right toolbar */
         [data-testid="stAppDeployButton"] {display: none !important;}
         .stAppDeployButton {display: none !important;}
-        /* Hides the floating red crown badge */
         [data-testid="stStatusWidget"] {visibility: hidden;}
         [data-testid="stToolbar"] {visibility: hidden;}
         .stDeployButton {display: none;}
         </style>
         """, unsafe_allow_html=True)
-    
-    # Inject JavaScript to remove the "Manage App" badge forcefully
-    components.html(
-        """
-        <script>
-        // Wait for DOM to load, then keep checking for the toolbar
-        const hideToolbar = () => {
-            const toolbar = window.parent.document.querySelector('[data-testid="stAppDeployButton"]');
-            if (toolbar) {
-                toolbar.style.display = 'none';
-                toolbar.style.visibility = 'hidden';
-            }
-            // Fallback for older versions or specific button classes
-            const buttons = window.parent.document.querySelectorAll('button[kind="header"]');
-            buttons.forEach(b => b.style.display = 'none');
-        };
-        
-        // Check immediately, and then keep checking in case it loads late
-        hideToolbar();
-        setInterval(hideToolbar, 500); 
-        </script>
-        """,
-        height=0, width=0
-    )
 
 CADRES = {
     "CT (BPS-15)": "CT",
@@ -453,7 +426,17 @@ elif st.session_state.role == "public":
     
     if menu == "➕ Submit Details":
         st.subheader(f"Submit Your Details for {selected_cadre_label}")
-        st.info("Your data will be reviewed by Admin before being added to the Seniority List.")
+        
+        # --- INSTRUCTIONS BOX FOR EMPLOYEES ---
+        st.info("""
+        **📌 Instructions for Submitting Your Data:**
+        1. Look at the **Left Sidebar**. Make sure you have selected the correct Cadre (e.g., CT BPS-15, PST BPS-15) that you belong to.
+        2. Enter your **CNIC** in the box below. The system will check if you are already registered.
+        3. Fill in all your details accurately (Name, Father's Name, School, Dates, etc.).
+        4. Click the **Submit to Admin** button.
+        5. Your data will be sent to the Admin for verification. Once approved, you will appear on the Seniority List.
+        """)
+        
         live_cnic = st.text_input("CNIC *", key="pub_cnic")
         cnic_in_use = cnic_exists(live_cnic)
         if live_cnic and cnic_in_use: 
@@ -527,4 +510,3 @@ elif st.session_state.role == "public":
                 else:
                     st.error("❌ No record found.")
                     st.write("If you haven't submitted details, go to the **Submit Details** tab.")
-
