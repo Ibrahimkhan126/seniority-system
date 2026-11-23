@@ -123,7 +123,7 @@ def find_duplicates(df):
     return results
 
 # ==========================================
-# 4. UI AND TABS
+# 4. UI AND NAVIGATION
 # ==========================================
 st.set_page_config(page_title="Seniority System", page_icon="📋", layout="wide")
 st.title("📋 Seniority List Management System")
@@ -140,11 +140,13 @@ CADRES = {
 if st.session_state.role == "admin":
     st.sidebar.header("Admin Controls")
     selected_cadre_label = st.sidebar.radio("Select Cadre:", list(CADRES.keys()), key="admin_cadre_selector")
+    menu = st.sidebar.radio("Menu:", ["📊 View List", "➕ Add Employee", "📥 Bulk Import", "✏️ Edit Employee", "🗑️ Delete Employee", "🔍 Duplicate Check", "🛡️ Pending Approvals"])
     if st.sidebar.button("Log Out"):
         st.session_state.role = None
         st.rerun()
 else:
     selected_cadre_label = st.sidebar.selectbox("Select your Cadre:", list(CADRES.keys()), key="public_cadre_selector")
+    menu = st.sidebar.radio("Menu:", ["➕ Submit Details", "🔍 Check Status"])
     st.sidebar.info("You are logged in as an Employee.")
 
 selected_cadre_code = CADRES[selected_cadre_label]
@@ -157,21 +159,13 @@ else:
 
 MIN_DATE = date(1947, 1, 1)
 
-# --- DEFINE TABS AT THE TOP LEVEL TO PREVENT BLANK TABS ---
-tabs = st.tabs([
-    "📊 View List", 
-    "➕ Submit Details", 
-    "🔍 Check Status",
-    "📥 Bulk Import", 
-    "✏️ Edit", 
-    "🗑️ Delete", 
-    "🛡️ Approvals"
-])
+# ==========================================
+# 5. MENU LOGIC
+# ==========================================
 
-# --- ADMIN VIEW LOGIC ---
+# --- ADMIN MENUS ---
 if st.session_state.role == "admin":
-    
-    with tabs[0]:
+    if menu == "📊 View List":
         st.subheader(f"Admin: {selected_cadre_label} List")
         if df.empty:
             st.info("No employees found.")
@@ -202,40 +196,146 @@ if st.session_state.role == "admin":
                 view[display_cols].to_excel(writer, index=False)
             col2.download_button("⬇️ Download Excel", buffer.getvalue(), f"{selected_cadre_code}_list.xlsx")
 
-    with tabs[1]:
+    elif menu == "➕ Add Employee":
         st.subheader(f"Admin: Add New Employee to {selected_cadre_label}")
         live_cnic = st.text_input("CNIC *", key="admin_cnic")
         cnic_in_use = cnic_exists(live_cnic)
         if live_cnic and cnic_in_use: st.error("⚠️ CNIC already exists!")
+        form_disabled = bool(live_cnic) and cnic_in_use
         
         with st.form("admin_add"):
-            name = st.text_input("Name *")
-            school = st.text_input("School")
-            dob = st.date_input("DOB", value=None, min_value=MIN_DATE)
-            regular = st.date_input("Regular Apptt", value=None, min_value=MIN_DATE)
-            if st.form_submit_button("Add Employee"):
-                if name and live_cnic and not cnic_in_use:
-                    rec = (name, "", school, "NSR", 15, "", "", "", "", dob.isoformat() if dob else "", "", "", regular.isoformat() if regular else "", selected_cadre_code, "", clean_cnic(live_cnic), "", "", selected_cadre_code)
+            c1, c2 = st.columns(2)
+            with c1:
+                name = st.text_input("Name *", disabled=form_disabled)
+                father = st.text_input("Father's Name", disabled=form_disabled)
+                school = st.text_input("School", disabled=form_disabled)
+                default_bps = 12 if selected_cadre_code == "CT-IT" else 15
+                bps = st.number_input("BPS", value=default_bps, disabled=form_disabled)
+            with c2:
+                dob = st.date_input("DOB", value=None, min_value=MIN_DATE, disabled=form_disabled)
+                regular = st.date_input("Regular Apptt", value=None, min_value=MIN_DATE, disabled=form_disabled)
+                pno = st.text_input("P/No", disabled=form_disabled)
+                cell = st.text_input("Cell", disabled=form_disabled)
+            
+            if st.form_submit_button("Add Employee", disabled=form_disabled):
+                if name and live_cnic:
+                    rec = (name, father, school, "NSR", bps, "", "", "", "", dob.isoformat() if dob else "", "", "", regular.isoformat() if regular else "", selected_cadre_code, pno, live_cnic, cell, "", selected_cadre_code)
                     submit_employee(rec, is_pending=False)
                     st.success("Added!")
                     st.rerun()
 
-    with tabs[3]:
-        st.subheader("Bulk Import")
-        uploaded_file = st.file_uploader("Upload Excel", type=["xlsx"])
-        if uploaded_file:
-            st.info("Excel upload logic is safe here. (Code omitted for brevity, refer to previous version if needed).")
+    elif menu == "📥 Bulk Import":
+        st.subheader(f"Bulk Import to {selected_cadre_label}")
+        template_cols = ["name", "father_name", "school", "district", "bps", "acad", "subject", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            pd.DataFrame(columns=template_cols).to_excel(writer, index=False)
+        st.download_button("⬇️ Download Blank Excel Template", data=buffer.getvalue(), file_name="import_template.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-    with tabs[4]:
-        st.subheader("Edit Employee")
-        st.info("Edit logic works here.")
+        uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx"])
+        if uploaded_file is not None:
+            try:
+                import_df = pd.read_excel(uploaded_file, dtype=str).fillna("")
+                if ["name", "cnic"] not in import_df.columns:
+                    st.error("Missing required columns (name, cnic).")
+                else:
+                    st.success(f"File loaded. Found {len(import_df)} rows.")
+                    if st.button("✅ Process Import"):
+                        added, skipped_dup, skipped_err = 0, 0, 0
+                        for _, row in import_df.iterrows():
+                            cnic = clean_cnic(row.get("cnic", ""))
+                            if not cnic or cnic_exists(cnic):
+                                skipped_dup += 1
+                                continue
+                            try:
+                                data = {
+                                    "name": row.get("name", ""), "father_name": row.get("father_name", ""),
+                                    "school": row.get("school", ""), "district": row.get("district", "NSR"),
+                                    "bps": int(float(row.get("bps", 15) or 15)), "acad": row.get("acad", ""),
+                                    "div": "", "prof": "", "subject": row.get("subject", ""),
+                                    "dob": row.get("dob", ""), "first_apptt": row.get("first_apptt", ""),
+                                    "taking_over": row.get("taking_over", ""), "regular_apptt": row.get("regular_apptt", ""),
+                                    "desig": row.get("desig", selected_cadre_code), "pno": row.get("pno", ""),
+                                    "cnic": cnic, "cell": row.get("cell", ""), "remarks": row.get("remarks", ""),
+                                    "cadre": selected_cadre_code
+                                }
+                                supabase.table("employees").insert(data).execute()
+                                added += 1
+                            except Exception:
+                                skipped_err += 1
+                        st.success(f"Import Complete! Added: {added} | Skipped Dups: {skipped_dup} | Errors: {skipped_err}")
+            except Exception as e:
+                st.error(f"Error reading file: {e}")
 
-    with tabs[5]:
-        st.subheader("Delete Employee")
-        st.info("Delete logic works here.")
+    elif menu == "✏️ Edit Employee":
+        st.subheader(f"Edit Employee ({selected_cadre_label})")
+        if df.empty: 
+            st.info("No employees to edit.")
+        else:
+            ranked = compute_seniority(df)
+            options = ranked.apply(lambda r: f"#{r['rank']} — {r['name']} ({r['cnic']})", axis=1).tolist()
+            choice = st.selectbox("Select employee to edit", options)
+            idx = options.index(choice)
+            row = ranked.iloc[idx]
+            with st.form("edit_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    e_name = st.text_input("Name *", value=row["name"])
+                    e_father = st.text_input("Father's Name", value=row["father_name"])
+                    e_school = st.text_input("School Name", value=row["school"])
+                    e_district = st.text_input("District", value=row["district"])
+                    e_bps = st.number_input("BPS", min_value=1, max_value=22, value=int(row["bps"]) if row["bps"] else 15)
+                    e_desig = st.text_input("Designation", value=row["desig"])
+                    e_cnic = st.text_input("CNIC *", value=row["cnic"])
+                with c2:
+                    e_dob = st.text_input("Date of Birth", value=row["dob"])
+                    e_first = st.text_input("Date of 1st Apptt", value=row["first_apptt"])
+                    e_taking = st.text_input("Date of Taking Over", value=row["taking_over"])
+                    e_regular = st.text_input("Date of Regular Apptt", value=row["regular_apptt"])
+                    e_pno = st.text_input("P/No", value=row["pno"])
+                    e_cell = st.text_input("Cell No", value=row["cell"])
+                e_acad = st.text_input("Academic Qualification", value=row["acad"])
+                e_subject = st.text_input("Subject", value=row["subject"])
+                e_remarks = st.text_area("Remarks", value=row["remarks"])
+                save = st.form_submit_button("💾 Save Changes")
+                if save:
+                    if clean_cnic(e_cnic) != clean_cnic(row["cnic"]) and cnic_exists(clean_cnic(e_cnic)):
+                        st.error("⚠️ This CNIC is already used by another employee.")
+                    else:
+                        rec = (e_name.strip(), e_father.strip(), e_school.strip(), e_district.strip(), int(e_bps), e_acad.strip(), row["div"], row["prof"], e_subject.strip(), e_dob, e_first, e_taking, e_regular, e_desig, e_pno.strip(), e_cnic.strip(), e_cell.strip(), e_remarks.strip(), row["cadre"])
+                        ok, msg = update_employee(int(row["id"]), rec)
+                        if ok: st.success(msg); st.rerun()
+                        else: st.error(msg)
 
-    with tabs[6]:
-        st.subheader(f"Pending Approvals for {selected_cadre_label}")
+    elif menu == "🗑️ Delete Employee":
+        st.subheader(f"Delete Employee ({selected_cadre_label})")
+        if df.empty: 
+            st.info("No employees to delete.")
+        else:
+            ranked = compute_seniority(df)
+            options = ranked.apply(lambda r: f"#{r['rank']} — {r['name']} ({r['cnic']})", axis=1).tolist()
+            choice = st.selectbox("Select employee to delete", options)
+            confirm = st.checkbox("I confirm I want to permanently delete this employee.")
+            if st.button("🗑️ Delete permanently", type="secondary", disabled=not confirm):
+                idx = options.index(choice)
+                delete_employee(int(ranked.iloc[idx]["id"]))
+                st.success("Deleted."); st.rerun()
+
+    elif menu == "🔍 Duplicate Check":
+        st.subheader(f"🔍 Duplicate Detection ({selected_cadre_label})")
+        if df.empty: 
+            st.info("No employees to check.")
+        else:
+            dups = find_duplicates(df)
+            if not dups: st.success("✅ No duplicates found.")
+            else:
+                st.warning(f"⚠️ Found **{len(dups)}** type(s) of duplicate issues.")
+                for title, table in dups.items():
+                    with st.expander(f"{title} — {len(table)} rows", expanded=False):
+                        st.dataframe(table, use_container_width=True)
+
+    elif menu == "🛡️ Pending Approvals":
+        st.subheader(f"🛡️ Pending Approvals for {selected_cadre_label}")
         pending_df = load_pending()
         if not pending_df.empty:
             pending_df = pending_df[pending_df["cadre"] == selected_cadre_code]
@@ -256,36 +356,39 @@ if st.session_state.role == "admin":
                         delete_pending(row['id'])
                         st.rerun()
 
-# --- PUBLIC VIEW LOGIC ---
-else:
-    # Hide the tabs that employees shouldn't see
-    tabs[0].empty()
-    tabs[3].empty()
-    tabs[4].empty()
-    tabs[5].empty()
-    tabs[6].empty()
-    
-    with tabs[1]:
+# --- PUBLIC (EMPLOYEE) MENUS ---
+elif st.session_state.role == "public":
+    if menu == "➕ Submit Details":
         st.subheader(f"Submit Your Details for {selected_cadre_label}")
         st.info("Your data will be reviewed by Admin before being added to the Seniority List.")
         live_cnic = st.text_input("CNIC *", key="pub_cnic")
         cnic_in_use = cnic_exists(live_cnic)
-        if live_cnic and cnic_in_use: st.error("⚠️ This CNIC is already in the system.")
+        if live_cnic and cnic_in_use: 
+            st.error("⚠️ This CNIC is already in the system.")
+        form_disabled = bool(live_cnic) and cnic_in_use
         
         with st.form("pub_add"):
-            name = st.text_input("Name *", disabled=cnic_in_use)
-            father = st.text_input("Father's Name", disabled=cnic_in_use)
-            school = st.text_input("School", disabled=cnic_in_use)
-            dob = st.date_input("DOB", value=None, min_value=MIN_DATE, disabled=cnic_in_use)
-            regular = st.date_input("Regular Apptt", value=None, min_value=MIN_DATE, disabled=cnic_in_use)
+            c1, c2 = st.columns(2)
+            with c1:
+                name = st.text_input("Name *", disabled=form_disabled)
+                father = st.text_input("Father's Name", disabled=form_disabled)
+                school = st.text_input("School", disabled=form_disabled)
+                default_bps = 12 if selected_cadre_code == "CT-IT" else 15
+                bps = st.number_input("BPS", value=default_bps, disabled=form_disabled)
+            with c2:
+                dob = st.date_input("DOB", value=None, min_value=MIN_DATE, disabled=form_disabled)
+                regular = st.date_input("Regular Apptt", value=None, min_value=MIN_DATE, disabled=form_disabled)
+                pno = st.text_input("P/No", disabled=form_disabled)
+                cell = st.text_input("Cell", disabled=form_disabled)
             
-            if st.form_submit_button("Submit to Admin", disabled=cnic_in_use):
+            if st.form_submit_button("Submit to Admin", disabled=form_disabled):
                 if name and live_cnic:
-                    rec = (name, father, school, "NSR", 15, "", "", "", "", dob.isoformat() if dob else "", "", "", regular.isoformat() if regular else "", selected_cadre_code, "", clean_cnic(live_cnic), "", "", selected_cadre_code)
+                    rec = (name, father, school, "NSR", bps, "", "", "", "", dob.isoformat() if dob else "", "", "", regular.isoformat() if regular else "", selected_cadre_code, pno, live_cnic, cell, "", selected_cadre_code)
                     submit_employee(rec, is_pending=True)
                     st.success("✅ Submitted! Pending Admin approval.")
+                    st.balloons()
 
-    with tabs[2]:
+    elif menu == "🔍 Check Status":
         st.subheader(f"🔍 Check Your Seniority Status")
         st.write(f"You are checking the **{selected_cadre_label}** list.")
         
@@ -326,9 +429,7 @@ else:
                             f"**Designation:** {final_record['desig']} (BPS {final_record['bps']})\n\n"
                             f"**Regular Apptt Date:** {final_record['regular_apptt']}")
                     
-                    # Big Rank Display
                     st.metric(label="Your Official Seniority Rank", value=f"#{final_record['rank']}")
-                    
                     st.caption("⚠️ This snapshot is generated directly from the official database and cannot be edited or tempered by the user.")
                     
                 elif not pending_record.empty:
