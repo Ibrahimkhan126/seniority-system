@@ -186,17 +186,9 @@ if menu == "📊 View List":
 
         display_cols = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
         
-        # --- APPLY EXPORT DISABLE FOR PUBLIC USERS ---
-        if st.session_state.role == "public":
-            # This native config disables both CSV download and clipboard copy
-            st.set_option("client.disableDataExport", True)
-        else:
-            # Ensure it's enabled for admin
-            st.set_option("client.disableDataExport", False)
-
-        st.dataframe(view[display_cols], use_container_width=True, height=600, hide_index=True)
-        
+        # --- ADMIN GETS THE INTERACTIVE TABLE ---
         if st.session_state.role == "admin":
+            st.dataframe(view[display_cols], use_container_width=True, height=600, hide_index=True)
             col1, col2 = st.columns(2)
             csv = view[display_cols].to_csv(index=False).encode("utf-8")
             col1.download_button("⬇️ Download CSV", csv, f"{selected_cadre_code}_list.csv", "text/csv")
@@ -204,6 +196,49 @@ if menu == "📊 View List":
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 view[display_cols].to_excel(writer, index=False)
             col2.download_button("⬇️ Download Excel", buffer.getvalue(), f"{selected_cadre_code}_list.xlsx")
+        
+        # --- EMPLOYEE GETS A STATIC, NON-SELECTABLE HTML TABLE ---
+        else:
+            # This CSS makes the text unselectable
+            st.markdown("""
+                <style>
+                .static-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 14px;
+                    -webkit-user-select: none;
+                    -moz-user-select: none;
+                    -ms-user-select: none;
+                    user-select: none;
+                }
+                .static-table th, .static-table td {
+                    border: 1px solid #ddd;
+                    padding: 8px;
+                    text-align: left;
+                }
+                .static-table th {
+                    background-color: #f2f2f2;
+                    font-weight: bold;
+                }
+                .static-table tr:nth-child(even) {background-color: #f9f9f9;}
+                </style>
+            """, unsafe_allow_html=True)
+            
+            # Build the HTML table
+            html = '<table class="static-table"><thead><tr>'
+            for col in display_cols:
+                html += f'<th>{col.replace("_", " ").title()}</th>'
+            html += '</tr></thead><tbody>'
+            
+            for _, row in view.iterrows():
+                html += '<tr>'
+                for col in display_cols:
+                    html += f'<td>{row[col]}</td>'
+                html += '</tr>'
+            html += '</tbody></table>'
+            
+            # Render it
+            st.markdown(html, unsafe_allow_html=True)
 
 # --- ADMIN-ONLY MENUS ---
 elif st.session_state.role == "admin":
