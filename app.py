@@ -139,6 +139,10 @@ if st.session_state.role == "public":
         /* Hides the Streamlit Cloud top right toolbar */
         [data-testid="stAppDeployButton"] {display: none !important;}
         .stAppDeployButton {display: none !important;}
+        /* Hides the floating red crown badge */
+        [data-testid="stStatusWidget"] {visibility: hidden;}
+        [data-testid="stToolbar"] {visibility: hidden;}
+        .stDeployButton {display: none;}
         </style>
         """, unsafe_allow_html=True)
     
@@ -523,3 +527,4 @@ elif st.session_state.role == "public":
                 else:
                     st.error("❌ No record found.")
                     st.write("If you haven't submitted details, go to the **Submit Details** tab.")
+
