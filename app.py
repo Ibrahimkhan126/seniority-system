@@ -128,6 +128,16 @@ def find_duplicates(df):
 st.set_page_config(page_title="Seniority System", page_icon="📋", layout="wide")
 st.title("📋 Seniority List Management System")
 
+# HIDE THE TOP-RIGHT MENU (Print, Rerun, etc.) FOR PUBLIC USERS
+if st.session_state.role == "public":
+    st.markdown("""
+        <style>
+        #MainMenu {visibility: hidden;}
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+        </style>
+        """, unsafe_allow_html=True)
+
 CADRES = {
     "CT (BPS-15)": "CT",
     "PST (BPS-15)": "PST",
@@ -184,11 +194,11 @@ if menu == "📊 View List":
         for date_col in ["dob", "first_apptt", "taking_over", "regular_apptt"]:
             view[date_col] = pd.to_datetime(view[date_col], errors="coerce").dt.strftime('%d %b %Y').fillna("")
 
-        display_cols = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
-        
-        # --- ADMIN GETS THE INTERACTIVE TABLE ---
+        # --- ADMIN VIEW ---
         if st.session_state.role == "admin":
+            display_cols = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "pno", "cnic", "cell", "remarks"]
             st.dataframe(view[display_cols], use_container_width=True, height=600, hide_index=True)
+            
             col1, col2 = st.columns(2)
             csv = view[display_cols].to_csv(index=False).encode("utf-8")
             col1.download_button("⬇️ Download CSV", csv, f"{selected_cadre_code}_list.csv", "text/csv")
@@ -197,9 +207,12 @@ if menu == "📊 View List":
                 view[display_cols].to_excel(writer, index=False)
             col2.download_button("⬇️ Download Excel", buffer.getvalue(), f"{selected_cadre_code}_list.xlsx")
         
-        # --- EMPLOYEE GETS A STATIC, NON-SELECTABLE HTML TABLE ---
+        # --- EMPLOYEE VIEW (HIDDEN SENSITIVE COLUMNS) ---
         else:
-            # This CSS makes the text unselectable
+            # Only show non-sensitive columns to public
+            display_cols_public = ["rank", "name", "father_name", "school", "dob", "first_apptt", "taking_over", "regular_apptt", "desig", "remarks"]
+            
+            # CSS to make text unselectable
             st.markdown("""
                 <style>
                 .static-table {
@@ -226,13 +239,20 @@ if menu == "📊 View List":
             
             # Build the HTML table
             html = '<table class="static-table"><thead><tr>'
-            for col in display_cols:
-                html += f'<th>{col.replace("_", " ").title()}</th>'
+            for col in display_cols_public:
+                # Clean up column names for headers
+                clean_header = col.replace("_", " ").title()
+                if col == "dob": clean_header = "DOB"
+                if col == "first_apptt": clean_header = "1st Apptt"
+                if col == "taking_over": clean_header = "Taking Over"
+                if col == "regular_apptt": clean_header = "Regular Apptt"
+                if col == "father_name": clean_header = "Father's Name"
+                html += f'<th>{clean_header}</th>'
             html += '</tr></thead><tbody>'
             
             for _, row in view.iterrows():
                 html += '<tr>'
-                for col in display_cols:
+                for col in display_cols_public:
                     html += f'<td>{row[col]}</td>'
                 html += '</tr>'
             html += '</tbody></table>'
