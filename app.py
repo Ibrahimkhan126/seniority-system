@@ -128,7 +128,7 @@ def find_duplicates(df):
 st.set_page_config(page_title="Seniority System", page_icon="📋", layout="wide")
 st.title("📋 Seniority List Management System")
 
-# HIDE TOP NAVIGATION BUT KEEP THE SIDEBAR TOGGLE FOR MOBILE
+# HIDE ONLY THE TOP MENU BUT KEEP HEADER FOR MOBILE ARROW
 if st.session_state.role == "public":
     st.markdown("""
         <style>
@@ -139,20 +139,6 @@ if st.session_state.role == "public":
         [data-testid="stStatusWidget"] {visibility: hidden;}
         [data-testid="stToolbar"] {visibility: hidden;}
         .stDeployButton {display: none;}
-        
-        /* 
-           Keep the sidebar toggle visible on mobile 
-           while hiding the rest of the header 
-        */
-        header {background: transparent !important;}
-        header [data-testid="stToolbar"] {display: none !important;}
-        
-        /* Force the sidebar toggle to stay visible */
-        [data-testid="collapsedControl"] {
-            display: block !important;
-            visibility: visible !important;
-            z-index: 999999 !important;
-        }
         </style>
         """, unsafe_allow_html=True)
 
