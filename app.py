@@ -128,7 +128,7 @@ def find_duplicates(df):
 st.set_page_config(page_title="Seniority System", page_icon="📋", layout="wide")
 st.title("📋 Seniority List Management System")
 
-# HIDE ONLY THE TOP MENU BUT KEEP HEADER FOR MOBILE ARROW
+# HIDE TOP MENU FOR PUBLIC USERS
 if st.session_state.role == "public":
     st.markdown("""
         <style>
@@ -151,17 +151,23 @@ CADRES = {
     "CT (IT) (BPS-12)": "CT-IT"
 }
 
-if st.session_state.role == "admin":
+# ==========================================
+# IN-PAGE NAVIGATION FOR PUBLIC (MOBILE FRIENDLY)
+# ==========================================
+if st.session_state.role == "public":
+    st.write("---")
+    # This dropdown replaces the sidebar for mobile users
+    selected_cadre_label = st.selectbox("Select your Cadre:", list(CADRES.keys()), key="mobile_cadre_selector")
+    menu = st.radio("Go to:", ["📊 View List", "➕ Submit Details", "🔍 Check Status"], horizontal=True, key="mobile_menu_selector")
+    st.write("---")
+else:
+    # Sidebar for Admin
     st.sidebar.header("Admin Controls")
     selected_cadre_label = st.sidebar.radio("Select Cadre:", list(CADRES.keys()), key="admin_cadre_selector")
     menu = st.sidebar.radio("Menu:", ["📊 View List", "➕ Add Employee", "📥 Bulk Import", "✏️ Edit Employee", "🗑️ Delete Employee", "🔍 Duplicate Check", "🛡️ Pending Approvals"])
     if st.sidebar.button("Log Out"):
         st.session_state.role = None
         st.rerun()
-else:
-    selected_cadre_label = st.sidebar.selectbox("Select your Cadre:", list(CADRES.keys()), key="public_cadre_selector")
-    menu = st.sidebar.radio("Menu:", ["📊 View List", "➕ Submit Details", "🔍 Check Status"])
-    st.sidebar.info("You are logged in as an Employee.")
 
 selected_cadre_code = CADRES[selected_cadre_label]
 
@@ -181,15 +187,8 @@ MIN_DATE = date(1947, 1, 1)
 if menu == "📊 View List":
     st.subheader(f"{selected_cadre_label} Seniority List")
     
-    # --- INSTRUCTIONS BOX FOR EMPLOYEES (Visible on View List) ---
     if st.session_state.role == "public":
-        st.info("""
-        **📌 How to use this system:**
-        1. **Look at the Left Sidebar** (on mobile, tap the '>' arrow top-left) and make sure the correct Cadre is selected.
-        2. To **Add Your Details**, go to the **➕ Submit Details** menu in the sidebar.
-        3. Fill in your CNIC and details, then click **Submit to Admin**.
-        4. To **Check Your Rank**, go to the **🔍 Check Status** menu in the sidebar.
-        """)
+        st.info("**Need to add your details?** Click the **➕ Submit Details** button at the top of this page.")
 
     if df.empty:
         st.info("No employees found.")
@@ -440,7 +439,7 @@ elif st.session_state.role == "public":
         # --- INSTRUCTIONS BOX FOR EMPLOYEES ---
         st.info("""
         **📌 Instructions for Submitting Your Data:**
-        1. Look at the **Left Sidebar**. Make sure you have selected the correct Cadre (e.g., CT BPS-15, PST BPS-15) that you belong to.
+        1. Look at the **dropdown at the top** and make sure you have selected the correct Cadre (e.g., CT BPS-15, PST BPS-15).
         2. Enter your **CNIC** in the box below. The system will check if you are already registered.
         3. Fill in all your details accurately (Name, Father's Name, School, Dates, etc.).
         4. Click the **Submit to Admin** button.
